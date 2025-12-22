@@ -105,7 +105,6 @@ func (s *StreamHandle) buildConvertArgs(args []string) []string {
 	}
 	args = append(args, "-f", string(in.AudioFileFormat), "-i", "pipe:0")
 
-	// 使用 aresample 确保输出质量
 	args = append(args, "-af", fmt.Sprintf("aresample=%d", out.SampleRate))
 	args = append(args,
 		"-ar", fmt.Sprintf("%d", out.SampleRate),
@@ -133,13 +132,21 @@ func (s *StreamHandle) buildSplitArgs(args []string) []string {
 	)
 
 	args = append(args, "-filter_complex", filterStr)
-	args = append(args, "-map", "[left]", "-ar", fmt.Sprintf("%d", outL.SampleRate), "-f", string(outL.AudioFileFormat), "pipe:1")
-	args = append(args, "-map", "[right]", "-ar", fmt.Sprintf("%d", outR.SampleRate), "-f", string(outR.AudioFileFormat), "pipe:3")
+	args = append(args,
+		"-map", "[left]",
+		"-ar", fmt.Sprintf("%d", outL.SampleRate),
+		"-f", string(outL.AudioFileFormat),
+		"pipe:1")
+	args = append(args,
+		"-map", "[right]",
+		"-ar", fmt.Sprintf("%d", outR.SampleRate),
+		"-f", string(outR.AudioFileFormat),
+		"pipe:3")
 	return args
 }
 
 func (s *StreamHandle) buildMergeArgs(args []string) []string {
-	numInputs := 2 // 当前标准支持 2 路
+	numInputs := 2
 	targetOut := s.config.GetOutputArg(0)
 
 	for i := range numInputs {
@@ -152,7 +159,8 @@ func (s *StreamHandle) buildMergeArgs(args []string) []string {
 		if formats.IsRawPCM(in.AudioFileFormat) {
 			args = append(args, "-ar", fmt.Sprintf("%d", in.SampleRate), "-ac", fmt.Sprintf("%d", in.Channels))
 		}
-		args = append(args, "-thread_queue_size", "1024", "-f", string(in.AudioFileFormat), "-i", fmt.Sprintf("pipe:%d", pipeIdx))
+		args = append(args, "-thread_queue_size", "1024",
+			"-f", string(in.AudioFileFormat), "-i", fmt.Sprintf("pipe:%d", pipeIdx))
 	}
 
 	var filterComplex string
@@ -180,23 +188,20 @@ func (s *StreamHandle) buildMergeArgs(args []string) []string {
 }
 
 func (s *StreamHandle) setupPipes() error {
-	// 标准输入输出 (Index 0)
 	in0, _ := s.cmd.StdinPipe()
 	out0, _ := s.cmd.StdoutPipe()
 	s.stdins = append(s.stdins, in0)
 	s.stdouts = append(s.stdouts, out0)
 
-	// 如果是拆分，需要额外创建一个 ReadPipe
 	if s.config.OpType == formats.CHANNELSPLIT {
 		pr, pw, _ := os.Pipe()
-		s.cmd.ExtraFiles = append(s.cmd.ExtraFiles, pw) // PW 传给 FFmpeg (fd:3)
+		s.cmd.ExtraFiles = append(s.cmd.ExtraFiles, pw) // PW send FFmpeg (fd:3)
 		s.stdouts = append(s.stdouts, pr)
 	}
 
-	// 如果是合成，需要额外创建一个 WritePipe
 	if s.config.OpType == formats.AUDIOMERGE {
 		pr, pw, _ := os.Pipe()
-		s.cmd.ExtraFiles = append(s.cmd.ExtraFiles, pr) // PR 传给 FFmpeg (fd:3)
+		s.cmd.ExtraFiles = append(s.cmd.ExtraFiles, pr) // PR send FFmpeg (fd:3)
 		s.stdins = append(s.stdins, pw)
 	}
 

@@ -237,13 +237,11 @@ func (f *FileHandle) buildConvertArgs() ([]string, error) {
 	out := f.config.GetOutputArg(0)
 	args := []string{"-y"}
 
-	// 输入配置
 	if formats.IsRawPCM(in.AudioFileFormat) {
 		args = append(args, "-ar", fmt.Sprintf("%d", in.SampleRate), "-ac", fmt.Sprintf("%d", in.Channels))
 	}
 	args = append(args, "-f", string(in.AudioFileFormat), "-i", f.config.InputFiles[0])
 
-	// 输出配置：增加 aresample 滤镜确保采样率转换质量
 	args = append(args, "-af", fmt.Sprintf("aresample=%d", out.SampleRate))
 	args = append(args,
 		"-ar", fmt.Sprintf("%d", out.SampleRate),
@@ -259,7 +257,6 @@ func (f *FileHandle) buildSplitArgs() ([]string, error) {
 	if len(f.config.InputFiles) == 0 {
 		return nil, fmt.Errorf("channel split requires 1 input file")
 	}
-	// 即使 OutputFiles 只有一个，我们也按逻辑拆分为两个（如果用户只填了一个，通常表示同名覆盖或逻辑错误，这里要求明确 2 个）
 	if len(f.config.OutputFiles) < 2 {
 		return nil, fmt.Errorf("channel split requires exactly 2 output files (Left/Right)")
 	}
@@ -274,15 +271,22 @@ func (f *FileHandle) buildSplitArgs() ([]string, error) {
 	}
 	args = append(args, "-f", string(in.AudioFileFormat), "-i", f.config.InputFiles[0])
 
-	// 滤镜：拆分并重采样
 	filterStr := fmt.Sprintf(
 		"[0:a]channelsplit=channel_layout=stereo[l][r]; [l]aresample=%d[left]; [r]aresample=%d[right]",
 		outL.SampleRate, outR.SampleRate,
 	)
 
 	args = append(args, "-filter_complex", filterStr)
-	args = append(args, "-map", "[left]", "-ar", fmt.Sprintf("%d", outL.SampleRate), "-f", string(outL.AudioFileFormat), f.config.OutputFiles[0])
-	args = append(args, "-map", "[right]", "-ar", fmt.Sprintf("%d", outR.SampleRate), "-f", string(outR.AudioFileFormat), f.config.OutputFiles[1])
+	args = append(args,
+		"-map", "[left]",
+		"-ar", fmt.Sprintf("%d", outL.SampleRate),
+		"-f", string(outL.AudioFileFormat),
+		f.config.OutputFiles[0])
+	args = append(args,
+		"-map", "[right]",
+		"-ar", fmt.Sprintf("%d", outR.SampleRate),
+		"-f", string(outR.AudioFileFormat),
+		f.config.OutputFiles[1])
 	return args, nil
 }
 
@@ -298,7 +302,6 @@ func (f *FileHandle) buildMergeArgs() ([]string, error) {
 	targetOut := f.config.GetOutputArg(0)
 	args := []string{"-y"}
 
-	// 遍历输入文件并应用各自或全局配置
 	for i, filePath := range f.config.InputFiles {
 		in := f.config.GetInputArg(i)
 		if formats.IsRawPCM(in.AudioFileFormat) {
@@ -314,10 +317,8 @@ func (f *FileHandle) buildMergeArgs() ([]string, error) {
 	}
 
 	if f.config.MergeMode == formats.SideBySide {
-		// 仅支持前两个输入合并为立体声
 		filterComplex += "[a0][a1]join=inputs=2:channel_layout=stereo[out]"
 	} else {
-		// 混合模式：支持多路
 		filterComplex += fmt.Sprintf("[a0][a1]amix=inputs=%d:duration=longest[mixed]", len(f.config.InputFiles))
 		if targetOut.Channels == 2 {
 			filterComplex += "; [mixed]pan=stereo|c0=c0|c1=c0[out]"
@@ -327,7 +328,10 @@ func (f *FileHandle) buildMergeArgs() ([]string, error) {
 	}
 
 	args = append(args, "-filter_complex", filterComplex, "-map", "[out]")
-	args = append(args, "-ar", fmt.Sprintf("%d", targetOut.SampleRate), "-ac", fmt.Sprintf("%d", targetOut.Channels), "-f", string(targetOut.AudioFileFormat), f.config.OutputFiles[0])
+	args = append(args,
+		"-ar", fmt.Sprintf("%d", targetOut.SampleRate),
+		"-ac", fmt.Sprintf("%d", targetOut.Channels),
+		"-f", string(targetOut.AudioFileFormat), f.config.OutputFiles[0])
 	return args, nil
 }
 
