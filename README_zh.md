@@ -46,12 +46,11 @@ go get https://github.com/QuincyGao/audio-go
 
 ## 🛠 功能示例
 
-
 请参考example/main.go,  说明：
 
-1.  
-
-
+1. 当输入是`pcm`格式时，必须传递`sample`和`channel`, 其他格式可不用传这两个参数。
+2. 当音频声道拆分或者合成时，如果两个声道的`AudioFileFormat`,`sample`,`channel`一样时，可只配一个配置。
+3. 目前只支持两个声道的合成和拆分。
 
 ## 📐 逻辑架构
 

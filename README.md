@@ -42,73 +42,14 @@ go get github.com/QuincyGao/audio-go
 
 ## 🛠 Usage Examples
 
-### 1. Real-time Streaming: Multi-Stream Synthesis (Stream Merge)
+Please refer to `example/main.go`
 
-This example simulates merging two users' mono PCM raw streams into one real-time output.
+Important Usage Notes
 
-**Go**
+1. **Mandatory Parameters for PCM**: When the input format is `PCM` (e.g., `S16LE`), you **must** explicitly provide the `SampleRate` and `Channels`. For other encoded formats (like `MP3` or `WAV`), these parameters are optional as they can be automatically detected by the engine.
+2. **Configuration Shorthand**: During audio channel splitting or merging, if both channels share the same `AudioFileFormat`, `SampleRate`, and `Channels`, you only need to provide **one** configuration entry in the `InputArgs` or `OutputArgs` slice. The engine will automatically apply it to both streams.
+3. **Channel Limitations**: Currently, the framework strictly supports the merging of **two** mono streams into one stereo stream, or the splitting of **one** stereo stream into **two** mono streams.
 
-```
-package main
-
-import (
-    "context"
-    "github.com/QuincyGao/audio-go"
-    "github.com/QuincyGao/audio-go/formats"
-)
-
-func main() {
-    // Configuration: 2 Mono inputs -> 1 Stereo output
-    cfg := formats.AudioConfig{
-        OpType:    formats.AUDIOMERGE,
-        MergeMode: formats.SideBySide, // User A to Left, User B to Right
-        InputArgs: []formats.AudioArgs{
-            {AudioFileFormat: formats.S16LE, SampleRate: 16000, Channels: 1},
-        },
-        OutputArgs: []formats.AudioArgs{
-            {AudioFileFormat: formats.WAV, SampleRate: 16000, Channels: 2},
-        },
-    }
-
-    engine := audiogo.NewAudioEngine(audiogo.Stream, cfg)
-    engine.Start(context.Background())
-
-    // Simulated concurrent writes: WritePrimary (pipe:0), WriteSecondary (pipe:3)
-    go engine.WritePrimary(pcmDataA)
-    go engine.WriteSecondary(pcmDataB)
-
-    // Main loop: Read the synthesized WAV stream from the engine
-    buf := make([]byte, 4096)
-    for {
-        n, err := engine.ReadLeft(buf) 
-        if err != nil { break }
-        // Process or forward synthesized data (buf[:n])
-    }
-}
-```
-
-### 2. Offline Processing: Format Conversion (File Convert)
-
-Convert a high-resolution WAV file into a low-sample-rate mono MP3.
-
-**Go**
-
-```
-cfg := formats.AudioConfig{
-    OpType: formats.FORMATCONVERT,
-    InputFiles:  []string{"high_res.wav"},
-    OutputFiles: []string{"low_res.mp3"},
-    OutputArgs:  []formats.AudioArgs{
-        {AudioFileFormat: formats.MP3, SampleRate: 16000, Channels: 1},
-    },
-}
-
-engine := audiogo.NewAudioEngine(audiogo.File, cfg)
-if err := engine.Start(context.Background()); err == nil {
-    // Wait will block until the FFmpeg process completes
-    engine.Wait() 
-}
-```
 
 ---
 
