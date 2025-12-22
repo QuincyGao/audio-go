@@ -5,6 +5,7 @@
     |
     <a href="README.md"> English </a>
   </p>
+</div>
 
 </div>
 
@@ -45,34 +46,12 @@ go get https://github.com/QuincyGao/audio-go
 
 ## 🛠 功能示例
 
-### 1. 实时流处理：多路音频合成 (Stream Merge)
 
-模拟将两个用户的单声道 PCM 原始流实时合成。
+请参考example/main.go,  说明：
 
-```
+1.  
 
-```
 
-### 2. 离线文件处理：格式转换 (File Convert)
-
-将录制的 WAV 文件转换为低采样的单声道 MP3。
-
-```golang
-cfg := formats.AudioConfig{
-    OpType: formats.FORMATCONVERT,
-    InputFiles:  []string{"high_res.wav"},
-    OutputFiles: []string{"low_res.mp3"},
-    OutputArgs:  []formats.AudioArgs{
-        {AudioFileFormat: formats.MP3, SampleRate: 16000, Channels: 1},
-    },
-}
-
-engine := audiogo.NewAudioEngine(audiogo.File, cfg)
-if err := engine.Start(context.Background()); err == nil {
-    // Wait 会阻塞直到 FFmpeg 进程处理结束
-    engine.Wait() 
-}
-```
 
 ## 📐 逻辑架构
 
@@ -92,7 +71,6 @@ if err := engine.Start(context.Background()); err == nil {
 * **AudioFileFormat**: 支持 `WAV`, `MP3`, `AAC`, `S16LE` (Raw PCM) 等。
 * **SampleRate**: 支持任意采样率（内置自动重采样）。
 * **Channels**: 支持单声道 (1) 与立体声 (2) 之间的转换。
-
 
 ## 🤝 贡献与反馈
 

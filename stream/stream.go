@@ -55,7 +55,7 @@ func (s *StreamHandle) Init(ctx context.Context) (err error) {
 	}
 
 	s.ctx, s.cancel = context.WithCancel(ctx)
-	fmt.Printf("args: %+v\n", args)
+	// fmt.Printf("args: %+v\n", args)
 	s.cmd = exec.CommandContext(s.ctx, path, args...)
 	s.cmd.Stderr = s.stderr
 	if err := s.setupPipes(); err != nil {
