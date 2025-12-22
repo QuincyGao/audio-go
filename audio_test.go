@@ -338,7 +338,6 @@ func TestStreamChannelMerge(t *testing.T) {
 	audioByte1, _ := os.ReadFile(audiofile1)
 	audioByte2, _ := os.ReadFile(audiofile2)
 
-	// 使用两路独立配置的 mergeConfig
 	engine := NewAudioEngine(Stream, mergeConfig)
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
@@ -348,11 +347,11 @@ func TestStreamChannelMerge(t *testing.T) {
 	}
 	defer engine.Done()
 
-	var wgWriter sync.WaitGroup // 专门用于追踪写入协程
+	var wgWriter sync.WaitGroup
 	errChan := make(chan error, 10)
 
 	writeFunc := func(data []byte, isPrimary bool) {
-		defer wgWriter.Done() // 写入完成减 1
+		defer wgWriter.Done()
 		ticker := time.NewTicker(time.Duration(tickerInterval) * time.Millisecond)
 		defer ticker.Stop()
 
@@ -370,7 +369,6 @@ func TestStreamChannelMerge(t *testing.T) {
 					err = engine.WriteSecondary(remaining[:n])
 				}
 				if err != nil {
-					// 如果是因为 CloseInput 导致的关闭，忽略错误，否则报错
 					if !errors.Is(err, os.ErrClosed) && !strings.Contains(err.Error(), "closed") {
 						errChan <- fmt.Errorf("write error: %v", err)
 					}
@@ -385,15 +383,14 @@ func TestStreamChannelMerge(t *testing.T) {
 	go writeFunc(audioByte1, true)
 	go writeFunc(audioByte2, false)
 
-	// --- 核心改进：等待写入完成后再关闭 ---
 	go func() {
-		wgWriter.Wait()     // 阻塞直到两路输入全部发送完毕
-		engine.CloseInput() // 此时通知 FFmpeg：输入已全部结束 (发送 EOF)
+		wgWriter.Wait()
+		engine.CloseInput()
 	}()
 	outfile, _ := os.Create(audioStereoFile)
 	defer outfile.Close()
 	readCount := 0
-	// 读取协程逻辑
+
 	var wgReader sync.WaitGroup
 	wgReader.Add(1)
 	go func() {
@@ -407,12 +404,11 @@ func TestStreamChannelMerge(t *testing.T) {
 			}
 			bufferPool.Put(pBuf)
 			if err != nil {
-				break // 读到 EOF 或 错误
+				break
 			}
 		}
 	}()
 
-	// 最终等待
 	wgReader.Wait()
 	close(errChan)
 

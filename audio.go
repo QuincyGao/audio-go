@@ -51,24 +51,27 @@ func (ae *AudioEngine) Wait() error {
 	return ae.processor.Wait()
 }
 
+// WritePrimary write main channel
 func (ae *AudioEngine) WritePrimary(data []byte) error {
 	return ae.processor.WriteTo(0, data)
 }
 
-// WriteSecondary 写入辅助输入（Index 1，用于 Merge 场景）
+// WriteSecondary write second channel for merge
 func (ae *AudioEngine) WriteSecondary(data []byte) error {
 	return ae.processor.WriteTo(1, data)
 }
 
-// ReadLeft 读取左声道/第一路输出（Index 0）
+// ReadLeft read left or first channel
 func (ae *AudioEngine) ReadLeft(p []byte) (int, error) {
 	return ae.processor.ReadFrom(0, p)
 }
 
-// ReadRight 读取右声道/第二路输出（Index 1，用于 Split 场景）
+// ReadRight read right or second channel for split
 func (ae *AudioEngine) ReadRight(p []byte) (int, error) {
 	return ae.processor.ReadFrom(1, p)
 }
+
+// CloseInPut must close input after write done
 func (ae *AudioEngine) CloseInput() {
 	if !ae.running {
 		return

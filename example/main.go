@@ -115,13 +115,12 @@ func main() {
 
 }
 
-// runStreamMergeExample 演示如何实时合并两个音频流
+// runStreamMergeExample
 func runStreamMergeExample() {
 	log.Println("\n[Example] Real-time Stream Merging...")
 	audioByte1, _ := os.ReadFile(audiofile1)
 	audioByte2, _ := os.ReadFile(audiofile2)
 
-	// 使用两路独立配置的 mergeConfig
 	engine := audiogo.NewAudioEngine(audiogo.Stream, mergeConfig)
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
@@ -131,11 +130,11 @@ func runStreamMergeExample() {
 	}
 	defer engine.Done()
 
-	var wgWriter sync.WaitGroup // 专门用于追踪写入协程
+	var wgWriter sync.WaitGroup
 	errChan := make(chan error, 10)
 
 	writeFunc := func(data []byte, isPrimary bool) {
-		defer wgWriter.Done() // 写入完成减 1
+		defer wgWriter.Done()
 		ticker := time.NewTicker(time.Duration(tickerInterval) * time.Millisecond)
 		defer ticker.Stop()
 
@@ -153,7 +152,6 @@ func runStreamMergeExample() {
 					err = engine.WriteSecondary(remaining[:n])
 				}
 				if err != nil {
-					// 如果是因为 CloseInput 导致的关闭，忽略错误，否则报错
 					if !errors.Is(err, os.ErrClosed) && !strings.Contains(err.Error(), "closed") {
 						errChan <- fmt.Errorf("write error: %v", err)
 					}
@@ -194,7 +192,6 @@ func runStreamMergeExample() {
 		}
 	}()
 
-	// 最终等待
 	wgReader.Wait()
 	close(errChan)
 
@@ -287,7 +284,7 @@ func runStreamConvertExample() {
 	log.Printf("Convert completed: %d bytes", readCount)
 }
 
-// runFileConvertExample 演示如何转换本地磁盘文件
+// runFileConvertExample
 func runFileConvertExample() {
 	log.Println("\n[Example] Offline File Conversion...")
 
