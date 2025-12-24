@@ -138,10 +138,37 @@ func (c *AudioConfig) SetDefaults() {
 
 // Validate checks the configuration for logical errors and missing required fields
 func (c *AudioConfig) Validate() error {
-	if c.OpType != FORMATCONVERT && c.OpType != CHANNELSPLIT && c.OpType != AUDIOMERGE {
-		return fmt.Errorf("invalid OpType: %s", c.OpType)
+	if err := c.validateOpType(); err != nil {
+		return err
 	}
 
+	if err := c.validateInputArgs(); err != nil {
+		return err
+	}
+
+	if err := c.validateOutputArgs(); err != nil {
+		return err
+	}
+
+	return c.validateOpSpecificRules()
+}
+
+// validateOpType validates the operation type
+func (c *AudioConfig) validateOpType() error {
+	validOps := map[string]bool{
+		FORMATCONVERT: true,
+		CHANNELSPLIT:  true,
+		AUDIOMERGE:    true,
+	}
+
+	if !validOps[c.OpType] {
+		return fmt.Errorf("invalid OpType: %s", c.OpType)
+	}
+	return nil
+}
+
+// validateInputArgs validates all input arguments
+func (c *AudioConfig) validateInputArgs() error {
 	for i := range c.InputArgs {
 		arg := c.GetInputArg(i)
 		isInputRaw := IsRawPCM(arg.AudioFileFormat)
@@ -150,7 +177,11 @@ func (c *AudioConfig) Validate() error {
 			return err
 		}
 	}
+	return nil
+}
 
+// validateOutputArgs validates all output arguments
+func (c *AudioConfig) validateOutputArgs() error {
 	for i := range c.OutputArgs {
 		arg := c.GetOutputArg(i)
 		label := fmt.Sprintf("OutputArgs[%d]", i)
@@ -158,32 +189,46 @@ func (c *AudioConfig) Validate() error {
 			return err
 		}
 	}
+	return nil
+}
 
+// validateOpSpecificRules validates operation-specific rules
+func (c *AudioConfig) validateOpSpecificRules() error {
 	switch c.OpType {
 	case CHANNELSPLIT:
-		inArg := c.GetInputArg(0)
-		if inArg.Channels != 2 {
-			return errors.New("CHANNELSPLIT requires input channels to be 2 (Stereo)")
-		}
-		if len(c.OutputArgs) > 1 && len(c.OutputArgs) < 2 {
-			return errors.New("CHANNELSPLIT needs at least 2 OutputArgs for Left and Right channels")
-		}
-
+		return c.validateChannelSplit()
 	case AUDIOMERGE:
-		if c.MergeMode == SideBySide {
-			outArg := c.GetOutputArg(0)
-			if outArg.Channels != 2 {
-				return errors.New("SideBySide MergeMode requires OutputArgs.Channels to be 2")
-			}
-		}
+		return c.validateAudioMerge()
+	}
+	return nil
+}
 
-		for i := range 2 {
-			if c.GetInputArg(i).Channels > 1 && c.MergeMode == SideBySide {
-				return fmt.Errorf("input %d must be Mono (Channels=1) for SideBySide Merge", i)
-			}
+// validateChannelSplit validates CHANNELSPLIT specific rules
+func (c *AudioConfig) validateChannelSplit() error {
+	inArg := c.GetInputArg(0)
+	if inArg.Channels != 2 {
+		return errors.New("CHANNELSPLIT requires input channels to be 2 (Stereo)")
+	}
+	if len(c.OutputArgs) > 1 && len(c.OutputArgs) < 2 {
+		return errors.New("CHANNELSPLIT needs at least 2 OutputArgs for Left and Right channels")
+	}
+	return nil
+}
+
+// validateAudioMerge validates AUDIOMERGE specific rules
+func (c *AudioConfig) validateAudioMerge() error {
+	if c.MergeMode == SideBySide {
+		outArg := c.GetOutputArg(0)
+		if outArg.Channels != 2 {
+			return errors.New("SideBySide MergeMode requires OutputArgs.Channels to be 2")
 		}
 	}
 
+	for i := range 2 {
+		if c.GetInputArg(i).Channels > 1 && c.MergeMode == SideBySide {
+			return fmt.Errorf("input %d must be Mono (Channels=1) for SideBySide Merge", i)
+		}
+	}
 	return nil
 }
 

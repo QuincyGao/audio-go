@@ -7,6 +7,20 @@
   </p>
 </div>
 
+
+<div align="center">
+  <a href="https://pkg.go.dev/github.com/QuincyGao/audio-go">
+    <img src="https://godoc.org/github.com/hibiken/asynq?status.svg" alt="" />
+  </a>
+	<a href="https://opensource.org/licenses/MIT">
+	  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="license">
+	</a>
+  <a href="https://goreportcard.com/report/github.com/QuincyGao/audio-go">
+    <img src="https://goreportcard.com/badge/github.com/QuincyGao/audio-go" alt="" />
+  </a>
+</div>
+
+
 # audio-go
 
 `audio-go` 是一个基于 Go 语言和 FFmpeg 构建的轻量级音频处理框架。它旨在为开发者提供一种简单、直观的方式来处理**实时流式音频**（如 WebSocket 语音流、实时转码）和**离线音频文件**。

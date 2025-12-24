@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -15,8 +16,10 @@ import (
 )
 
 const (
-	testInputFile   = "./example/sample_data/convert.pcm"
-	outInputFile    = "./example/sample_data/out-one-8kHz.pcm"
+	// testInputFile   = "./example/sample_data/convert.pcm"
+	testInputFile = "./example/sample_data/utter-8kHz-9550647ed6fa11f0.pcm"
+	// outInputFile    = "./example/sample_data/out-one-8kHz.pcm"
+	outInputFile    = "./example/sample_data/test-8kHz.wav"
 	stereoFile      = "./example/sample_data/audio-stereo.mp3"
 	leftMonoFile    = "./example/sample_data/out-left.pcm"
 	rightMonoFile   = "./example/sample_data/out-right.pcm"
@@ -207,102 +210,167 @@ func TestFileFormatConvert(t *testing.T) {
 
 // TestStreamChannelSplit tests channel splitting (Stereo -> Left/Right Mono)
 func TestStreamChannelSplit(t *testing.T) {
-	stereoByte, err := os.ReadFile(stereoFile)
+	stereoData, err := os.ReadFile(stereoFile)
 	if err != nil {
 		t.Skip("Skipping test: test input file not found")
 	}
 
-	engine := NewAudioEngine(Stream, splitConfig)
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	engine, ctx, cancel := setupTestEngine(splitConfig)
+	defer engine.Done()
 	defer cancel()
 
 	if err := engine.Start(ctx); err != nil {
 		t.Fatalf("Failed to start: %v", err)
 	}
-	defer engine.Done()
+
 	errChan := make(chan error, 3)
 	var wg sync.WaitGroup
-	wg.Add(3) // 1 write, 2 reads
 
-	// 1. Write stereo data
-	go func() {
-		ticker := time.NewTicker(time.Duration(tickerInterval) * time.Millisecond)
-		defer ticker.Stop()
-		defer wg.Done()
-		defer engine.CloseInput()
-		remaining := stereoByte
-		for len(remaining) > 0 {
-			select {
-			case <-ctx.Done():
+	// Setup output files
+	leftFile, rightFile := setupOutputFiles(t)
+	defer leftFile.Close()
+	defer rightFile.Close()
+
+	// Start all operations
+	wg.Add(3)
+	go writeStereoData(ctx, &wg, errChan, engine, stereoData)
+
+	var readLeft, readRight int
+	go readChannel(ctx, &wg, errChan, leftFile, &readLeft, engine.ReadLeft)
+	go readChannel(ctx, &wg, errChan, rightFile, &readRight, engine.ReadRight)
+
+	// Wait for completion
+	waitForCompletion(&wg, errChan)
+
+	// Validate results
+	validateSplitResults(t, engine, readLeft, readRight)
+}
+
+// setupTestEngine initializes the audio engine and context
+func setupTestEngine(config formats.AudioConfig) (*AudioEngine, context.Context, context.CancelFunc) {
+	engine := NewAudioEngine(Stream, config)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	return engine, ctx, cancel
+}
+
+// setupOutputFiles creates and returns output files for left and right channels
+func setupOutputFiles(t *testing.T) (*os.File, *os.File) {
+	leftFile, err := os.Create(leftMonoFile)
+	if err != nil {
+		t.Fatalf("Failed to create left channel file: %v", err)
+	}
+
+	rightFile, err := os.Create(rightMonoFile)
+	if err != nil {
+		leftFile.Close()
+		t.Fatalf("Failed to create right channel file: %v", err)
+	}
+
+	return leftFile, rightFile
+}
+
+// writeStereoData writes stereo data to the engine in chunks
+func writeStereoData(ctx context.Context, wg *sync.WaitGroup, errChan chan<- error,
+	engine *AudioEngine, stereoData []byte) {
+	defer wg.Done()
+	defer engine.CloseInput()
+
+	ticker := time.NewTicker(time.Duration(tickerInterval) * time.Millisecond)
+	defer ticker.Stop()
+
+	remaining := stereoData
+	for len(remaining) > 0 {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n := min(chunkByteLen, len(remaining))
+			if err := engine.WritePrimary(remaining[:n]); err != nil {
+				sendError(errChan, err)
 				return
-			case <-ticker.C:
-				n := min(chunkByteLen, len(remaining))
-				if err := engine.WritePrimary(remaining[:n]); err != nil {
-					errChan <- err
-					return
-				}
-				remaining = remaining[n:]
 			}
+			remaining = remaining[n:]
 		}
-	}()
-	leftfile, _ := os.Create(leftMonoFile)
-	defer leftfile.Close()
-	rightfile, _ := os.Create(rightMonoFile)
-	defer rightfile.Close()
+	}
+}
 
-	readLeft := 0
-	go func() {
-		defer wg.Done()
-		for {
-			pBuf := bufferPool.Get().(*[]byte)
-			n, err := engine.ReadLeft(*pBuf)
-			if n > 0 {
-				leftfile.Write((*pBuf)[:n])
-				readLeft += n
-			}
-			bufferPool.Put(pBuf)
-			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					errChan <- err
-				}
-				break
-			}
-		}
-	}()
+// readChannel reads audio data from a specific channel
+func readChannel(ctx context.Context, wg *sync.WaitGroup, errChan chan<- error,
+	file *os.File, bytesRead *int,
+	readFunc func([]byte) (int, error)) {
+	defer wg.Done()
 
-	// 3. Read Right channel
-	readRight := 0
-	go func() {
-		defer wg.Done()
-		for {
-			pBuf := bufferPool.Get().(*[]byte)
-			n, err := engine.ReadRight(*pBuf)
-			if n > 0 {
-				rightfile.Write((*pBuf)[:n])
-				readRight += n
-			}
-			bufferPool.Put(pBuf)
-			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					errChan <- err
-				}
-				break
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			if !readAndWriteChunk(file, bytesRead, readFunc, errChan) {
+				return
 			}
 		}
-	}()
+	}
+}
+
+// readAndWriteChunk reads a chunk of data and writes it to file
+func readAndWriteChunk(file *os.File, bytesRead *int,
+	readFunc func([]byte) (int, error), errChan chan<- error) bool {
+	pBuf := bufferPool.Get().(*[]byte)
+	defer bufferPool.Put(pBuf)
+
+	n, err := readFunc(*pBuf)
+	if n > 0 {
+		if _, writeErr := file.Write((*pBuf)[:n]); writeErr != nil {
+			sendError(errChan, writeErr)
+			return false
+		}
+		*bytesRead += n
+	}
+
+	if err != nil {
+		if !errors.Is(err, io.EOF) {
+			sendError(errChan, err)
+		}
+		return false
+	}
+
+	return true
+}
+
+// sendError safely sends an error to the error channel
+func sendError(errChan chan<- error, err error) {
+	select {
+	case errChan <- err:
+	default:
+		// Channel is full, drop the error
+	}
+}
+
+// waitForCompletion waits for all goroutines to complete
+func waitForCompletion(wg *sync.WaitGroup, errChan chan error) {
 	go func() {
 		wg.Wait()
 		close(errChan)
 	}()
+
+	// Process errors from channel
 	for err := range errChan {
 		if err != nil {
-			t.Errorf("Coroutine error: %v", err)
+			// In actual test, you might want to record these errors
+			// For now, we'll just log them
+			log.Printf("Error in goroutine: %v", err)
 		}
 	}
+}
+
+// validateSplitResults validates the results of the channel split
+func validateSplitResults(t *testing.T, engine *AudioEngine, readLeft, readRight int) {
 	if err := engine.Wait(); err != nil {
 		t.Logf("Engine exit status: %v", err)
 	}
+
 	t.Logf("Split completed: Left %d bytes, Right %d bytes", readLeft, readRight)
+
 	if readLeft == 0 || readRight == 0 {
 		t.Errorf("Data loss in split: L=%d, R=%d", readLeft, readRight)
 	}

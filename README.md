@@ -7,6 +7,19 @@
   </p>
 </div>
 
+<div align="center">
+  <a href="https://pkg.go.dev/github.com/QuincyGao/audio-go">
+    <img src="https://godoc.org/github.com/hibiken/asynq?status.svg" alt="" />
+  </a>
+	<a href="https://opensource.org/licenses/MIT">
+	  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="license">
+	</a>
+  <a href="https://goreportcard.com/report/github.com/QuincyGao/audio-go">
+    <img src="https://goreportcard.com/badge/github.com/QuincyGao/audio-go" alt="" />
+  </a>
+</div>
+
+
 # audio-go
 
 `audio-go` is a lightweight audio processing framework built on Go and FFmpeg. It is designed to provide developers with a simple and intuitive way to handle **real-time streaming audio** (e.g., WebSocket voice streams, real-time transcoding) and **offline audio files**.
@@ -49,7 +62,6 @@ Important Usage Notes
 1. **Mandatory Parameters for PCM**: When the input format is `PCM` (e.g., `S16LE`), you **must** explicitly provide the `SampleRate` and `Channels`. For other encoded formats (like `MP3` or `WAV`), these parameters are optional as they can be automatically detected by the engine.
 2. **Configuration Shorthand**: During audio channel splitting or merging, if both channels share the same `AudioFileFormat`, `SampleRate` and `Channels`, you only need to provide **one** configuration entry in the `InputArgs` or `OutputArgs` slice. The engine will automatically apply it to both streams.
 3. **Channel Limitations**: Currently, the framework strictly supports the merging of **two** mono streams into one stereo stream, or the splitting of **one** stereo stream into **two** mono streams.
-
 
 ---
 
