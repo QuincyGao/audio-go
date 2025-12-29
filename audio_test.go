@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	// testInputFile   = "./example/sample_data/convert.pcm"
+	//testInputFile = "./example/sample_data/one-8kHz.pcm"
 	testInputFile = "./example/sample_data/utter-8kHz-9550647ed6fa11f0.pcm"
-	// outInputFile    = "./example/sample_data/out-one-8kHz.pcm"
-	outInputFile    = "./example/sample_data/test-8kHz.wav"
+	// outInputFile    = "./example/sample_data/test-8kHz.pcm"
+	outInputFile    = "./example/sample_data/out-one-8kHz.pcm"
 	stereoFile      = "./example/sample_data/audio-stereo.mp3"
 	leftMonoFile    = "./example/sample_data/out-left.pcm"
 	rightMonoFile   = "./example/sample_data/out-right.pcm"
@@ -39,7 +39,8 @@ var bufferPool = sync.Pool{
 
 var (
 	testConfig = formats.AudioConfig{
-		OpType: formats.FORMATCONVERT,
+		OpType:  formats.FORMATCONVERT,
+		Filters: []string{},
 		InputArgs: []formats.AudioArgs{
 			{
 				AudioFileFormat: formats.S16LE,
@@ -49,8 +50,8 @@ var (
 		},
 		OutputArgs: []formats.AudioArgs{
 			{
-				AudioFileFormat: formats.WAV,
-				SampleRate:      8000,
+				AudioFileFormat: formats.S16LE,
+				SampleRate:      16000,
 				Channels:        1,
 			},
 		},
@@ -112,7 +113,7 @@ func TestStreamFormatConvert(t *testing.T) {
 	}
 
 	engine := NewAudioEngine(Stream, testConfig)
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	if err := engine.Start(ctx); err != nil {

@@ -3,6 +3,7 @@ package formats
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // -f args
@@ -65,14 +66,23 @@ type AudioArgs struct {
 type AudioConfig struct {
 	InputArgs   []AudioArgs
 	OutputArgs  []AudioArgs
-	OpType      string
 	MergeMode   MergeMode
+	OpType      string
+	Filters     []string
 	InputFiles  []string
 	OutputFiles []string
 }
 
 func IsRawPCM(fmt AudioFileFormat) bool {
 	return fmt != WAV && fmt != MP3 && fmt != G722 && fmt != G729 && fmt != OPUS && fmt != AAC
+}
+
+func (c *AudioConfig) GetFilterString() string {
+	if len(c.Filters) == 0 {
+		return ""
+	}
+
+	return strings.Join(c.Filters, ",")
 }
 
 // If only one AudioArgs is provided in the slice, it is used for all indices.

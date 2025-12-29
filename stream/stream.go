@@ -55,7 +55,7 @@ func (s *StreamHandle) Init(ctx context.Context) (err error) {
 	}
 
 	s.ctx, s.cancel = context.WithCancel(ctx)
-	// fmt.Printf("args: %+v\n", args)
+	fmt.Printf("args: %+v\n", args)
 	s.cmd = exec.CommandContext(s.ctx, path, args...)
 	s.cmd.Stderr = s.stderr
 	if err := s.setupPipes(); err != nil {
@@ -98,92 +98,37 @@ func (s *StreamHandle) Wait() error {
 }
 
 func (s *StreamHandle) buildConvertArgs(args []string) []string {
-	in := s.config.GetInputArg(0)
-	out := s.config.GetOutputArg(0)
-	if formats.IsRawPCM(in.AudioFileFormat) {
-		args = append(args, "-ar", fmt.Sprintf("%d", in.SampleRate), "-ac", fmt.Sprintf("%d", in.Channels))
+	args = append(args, formats.BuildInputArgs(s.config.GetInputArg(0), "pipe:0")...)
+	if custom := s.config.GetFilterString(); custom != "" {
+		args = append(args, "-af", custom)
 	}
-	args = append(args, "-f", string(in.AudioFileFormat), "-i", "pipe:0")
-
-	args = append(args, "-af", fmt.Sprintf("aresample=%d", out.SampleRate))
-	args = append(args,
-		"-ar", fmt.Sprintf("%d", out.SampleRate),
-		"-ac", fmt.Sprintf("%d", out.Channels),
-		"-f", string(out.AudioFileFormat),
-		"pipe:1",
-	)
+	args = append(args, formats.BuildOutputArgs(s.config.GetOutputArg(0), "pipe:1")...)
 	return args
 }
 
 func (s *StreamHandle) buildSplitArgs(args []string) []string {
-	in := s.config.GetInputArg(0)
-	if formats.IsRawPCM(in.AudioFileFormat) {
-		args = append(args, "-ar", fmt.Sprintf("%d", in.SampleRate), "-ac", fmt.Sprintf("%d", in.Channels))
-	}
-	args = append(args, "-f", string(in.AudioFileFormat), "-i", "pipe:0")
-
-	outL := s.config.GetOutputArg(0)
-	outR := s.config.GetOutputArg(1)
-
-	// 分别重采样左右声道
-	filterStr := fmt.Sprintf(
-		"[0:a]channelsplit=channel_layout=stereo[l][r]; [l]aresample=%d[left]; [r]aresample=%d[right]",
-		outL.SampleRate, outR.SampleRate,
-	)
-
-	args = append(args, "-filter_complex", filterStr)
-	args = append(args,
-		"-map", "[left]",
-		"-ar", fmt.Sprintf("%d", outL.SampleRate),
-		"-f", string(outL.AudioFileFormat),
-		"pipe:1")
-	args = append(args,
-		"-map", "[right]",
-		"-ar", fmt.Sprintf("%d", outR.SampleRate),
-		"-f", string(outR.AudioFileFormat),
-		"pipe:3")
+	args = append(args, formats.BuildInputArgs(s.config.GetInputArg(0), "pipe:0")...)
+	fStr, tags := formats.BuildFilterComplex(&s.config)
+	args = append(args, "-filter_complex", fStr)
+	// 映射输出
+	args = append(args, "-map", tags[0])
+	args = append(args, formats.BuildOutputArgs(s.config.GetOutputArg(0), "pipe:1")...)
+	args = append(args, "-map", tags[1])
+	args = append(args, formats.BuildOutputArgs(s.config.GetOutputArg(1), "pipe:3")...)
 	return args
 }
 
 func (s *StreamHandle) buildMergeArgs(args []string) []string {
-	numInputs := 2
-	targetOut := s.config.GetOutputArg(0)
-
-	for i := range numInputs {
-		in := s.config.GetInputArg(i)
-		pipeIdx := 0
+	for i := 0; i < 2; i++ {
+		src := "pipe:0"
 		if i > 0 {
-			pipeIdx = i + 2
+			src = fmt.Sprintf("pipe:%d", i+2)
 		}
-
-		if formats.IsRawPCM(in.AudioFileFormat) {
-			args = append(args, "-ar", fmt.Sprintf("%d", in.SampleRate), "-ac", fmt.Sprintf("%d", in.Channels))
-		}
-		args = append(args, "-thread_queue_size", "1024",
-			"-f", string(in.AudioFileFormat), "-i", fmt.Sprintf("pipe:%d", pipeIdx))
+		args = append(args, formats.BuildInputArgs(s.config.GetInputArg(i), src)...)
 	}
-
-	var filterComplex string
-	for i := range numInputs {
-		filterComplex += fmt.Sprintf("[%d:a]aresample=%d[a%d]; ", i, targetOut.SampleRate, i)
-	}
-
-	if s.config.MergeMode == formats.SideBySide {
-		filterComplex += "[a0][a1]join=inputs=2:channel_layout=stereo[out]"
-	} else {
-		filterComplex += "[a0][a1]amix=inputs=2:duration=longest[mixed]"
-		if targetOut.Channels == 2 {
-			filterComplex += "; [mixed]pan=stereo|c0=c0|c1=c0[out]"
-		} else {
-			filterComplex += "; [mixed]anull[out]"
-		}
-	}
-
-	args = append(args, "-filter_complex", filterComplex, "-map", "[out]")
-	args = append(args,
-		"-ar", fmt.Sprintf("%d", targetOut.SampleRate),
-		"-ac", fmt.Sprintf("%d", targetOut.Channels),
-		"-f", string(targetOut.AudioFileFormat), "pipe:1")
+	fStr, tags := formats.BuildFilterComplex(&s.config)
+	args = append(args, "-filter_complex", fStr, "-map", tags[0])
+	args = append(args, formats.BuildOutputArgs(s.config.GetOutputArg(0), "pipe:1")...)
 	return args
 }
 

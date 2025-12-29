@@ -226,112 +226,36 @@ func (f *FileHandle) checkFileWritable(filePath string) error {
 }
 
 func (f *FileHandle) buildConvertArgs() ([]string, error) {
-	if len(f.config.InputFiles) == 0 {
-		return nil, fmt.Errorf("no input file specified")
-	}
-	if len(f.config.OutputFiles) == 0 {
-		return nil, fmt.Errorf("no output file specified")
-	}
-
-	in := f.config.GetInputArg(0)
-	out := f.config.GetOutputArg(0)
 	args := []string{"-y"}
-
-	if formats.IsRawPCM(in.AudioFileFormat) {
-		args = append(args, "-ar", fmt.Sprintf("%d", in.SampleRate), "-ac", fmt.Sprintf("%d", in.Channels))
+	args = append(args, formats.BuildInputArgs(f.config.GetInputArg(0), f.config.InputFiles[0])...)
+	if custom := f.config.GetFilterString(); custom != "" {
+		args = append(args, "-af", custom)
 	}
-	args = append(args, "-f", string(in.AudioFileFormat), "-i", f.config.InputFiles[0])
-
-	args = append(args, "-af", fmt.Sprintf("aresample=%d", out.SampleRate))
-	args = append(args,
-		"-ar", fmt.Sprintf("%d", out.SampleRate),
-		"-ac", fmt.Sprintf("%d", out.Channels),
-		"-f", string(out.AudioFileFormat),
-		f.config.OutputFiles[0],
-	)
+	args = append(args, formats.BuildOutputArgs(f.config.GetOutputArg(0), f.config.OutputFiles[0])...)
 	return args, nil
 }
 
-// 2. 声道拆分：input1 (立体声) -> output1 (左), output2 (右)
 func (f *FileHandle) buildSplitArgs() ([]string, error) {
-	if len(f.config.InputFiles) == 0 {
-		return nil, fmt.Errorf("channel split requires 1 input file")
-	}
-	if len(f.config.OutputFiles) < 2 {
-		return nil, fmt.Errorf("channel split requires exactly 2 output files (Left/Right)")
-	}
-
-	in := f.config.GetInputArg(0)
-	outL := f.config.GetOutputArg(0)
-	outR := f.config.GetOutputArg(1)
-
 	args := []string{"-y"}
-	if formats.IsRawPCM(in.AudioFileFormat) {
-		args = append(args, "-ar", fmt.Sprintf("%d", in.SampleRate), "-ac", fmt.Sprintf("%d", in.Channels))
-	}
-	args = append(args, "-f", string(in.AudioFileFormat), "-i", f.config.InputFiles[0])
+	args = append(args, formats.BuildInputArgs(f.config.GetInputArg(0), f.config.InputFiles[0])...)
+	fStr, tags := formats.BuildFilterComplex(&f.config)
+	args = append(args, "-filter_complex", fStr)
 
-	filterStr := fmt.Sprintf(
-		"[0:a]channelsplit=channel_layout=stereo[l][r]; [l]aresample=%d[left]; [r]aresample=%d[right]",
-		outL.SampleRate, outR.SampleRate,
-	)
-
-	args = append(args, "-filter_complex", filterStr)
-	args = append(args,
-		"-map", "[left]",
-		"-ar", fmt.Sprintf("%d", outL.SampleRate),
-		"-f", string(outL.AudioFileFormat),
-		f.config.OutputFiles[0])
-	args = append(args,
-		"-map", "[right]",
-		"-ar", fmt.Sprintf("%d", outR.SampleRate),
-		"-f", string(outR.AudioFileFormat),
-		f.config.OutputFiles[1])
+	args = append(args, "-map", tags[0])
+	args = append(args, formats.BuildOutputArgs(f.config.GetOutputArg(0), f.config.OutputFiles[0])...)
+	args = append(args, "-map", tags[1])
+	args = append(args, formats.BuildOutputArgs(f.config.GetOutputArg(1), f.config.OutputFiles[1])...)
 	return args, nil
 }
 
-// 3. 音频合成：input1, input2... -> output1
 func (f *FileHandle) buildMergeArgs() ([]string, error) {
-	if len(f.config.InputFiles) < 2 {
-		return nil, fmt.Errorf("audio merge requires at least 2 input files")
-	}
-	if len(f.config.OutputFiles) == 0 {
-		return nil, fmt.Errorf("no output file specified for audio merge")
-	}
-
-	targetOut := f.config.GetOutputArg(0)
 	args := []string{"-y"}
-
-	for i, filePath := range f.config.InputFiles {
-		in := f.config.GetInputArg(i)
-		if formats.IsRawPCM(in.AudioFileFormat) {
-			args = append(args, "-ar", fmt.Sprintf("%d", in.SampleRate), "-ac", fmt.Sprintf("%d", in.Channels))
-		}
-		args = append(args, "-f", string(in.AudioFileFormat), "-i", filePath)
+	for i, path := range f.config.InputFiles {
+		args = append(args, formats.BuildInputArgs(f.config.GetInputArg(i), path)...)
 	}
-
-	// 构建滤镜：先重采样再混合
-	filterComplex := ""
-	for i := range f.config.InputFiles {
-		filterComplex += fmt.Sprintf("[%d:a]aresample=%d[a%d]; ", i, targetOut.SampleRate, i)
-	}
-
-	if f.config.MergeMode == formats.SideBySide {
-		filterComplex += "[a0][a1]join=inputs=2:channel_layout=stereo[out]"
-	} else {
-		filterComplex += fmt.Sprintf("[a0][a1]amix=inputs=%d:duration=longest[mixed]", len(f.config.InputFiles))
-		if targetOut.Channels == 2 {
-			filterComplex += "; [mixed]pan=stereo|c0=c0|c1=c0[out]"
-		} else {
-			filterComplex += "; [mixed]anull[out]"
-		}
-	}
-
-	args = append(args, "-filter_complex", filterComplex, "-map", "[out]")
-	args = append(args,
-		"-ar", fmt.Sprintf("%d", targetOut.SampleRate),
-		"-ac", fmt.Sprintf("%d", targetOut.Channels),
-		"-f", string(targetOut.AudioFileFormat), f.config.OutputFiles[0])
+	fStr, tags := formats.BuildFilterComplex(&f.config)
+	args = append(args, "-filter_complex", fStr, "-map", tags[0])
+	args = append(args, formats.BuildOutputArgs(f.config.GetOutputArg(0), f.config.OutputFiles[0])...)
 	return args, nil
 }
 
